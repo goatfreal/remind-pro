@@ -16,6 +16,8 @@ import { ReminderItem } from './src/components/ReminderItem';
 import { AddReminderModal } from './src/components/AddReminderModal';
 import { SnoozeModal } from './src/components/SnoozeModal';
 import { EisenhowerView } from './src/components/EisenhowerView';
+import { HonestyModal } from './src/components/HonestyModal';
+import { LockdownBanner } from './src/components/LockdownBanner';
 import { COLORS } from './src/theme/colors';
 import { Reminder, ViewFilter } from './src/types/reminder';
 import {
@@ -37,6 +39,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
+  const [honestyTarget, setHonestyTarget] = useState<Reminder | null>(null);
 
   // Load persisted reminders and stats on startup
   useEffect(() => {
@@ -55,28 +58,40 @@ export default function App() {
     saveReminders(updated);
   };
 
-  // Toggle completion
-  const handleToggle = async (id: string) => {
-    let justCompleted = false;
+  // Checkbox tapped -> trigger Honesty Check if completing
+  const handleToggle = (id: string) => {
+    const target = reminders.find((r) => r.id === id);
+    if (!target) return;
+
+    if (!target.isCompleted) {
+      // Trying to complete: Must pass honesty countdown check!
+      setHonestyTarget(target);
+    } else {
+      // Uncompleting: Direct toggle
+      const updated = reminders.map((r) =>
+        r.id === id ? { ...r, isCompleted: false, completedAt: undefined } : r
+      );
+      updateReminders(updated);
+    }
+  };
+
+  // Confirmed completion after 7-second countdown
+  const handleConfirmCompletion = async (id: string) => {
     const updated = reminders.map((r) => {
       if (r.id === id) {
-        const nextState = !r.isCompleted;
-        if (nextState) justCompleted = true;
         return {
           ...r,
-          isCompleted: nextState,
-          completedAt: nextState ? new Date().toISOString() : undefined,
+          isCompleted: true,
+          completedAt: new Date().toISOString(),
         };
       }
       return r;
     });
 
     updateReminders(updated);
-
-    if (justCompleted) {
-      const newStats = await recordCompletion();
-      setStats(newStats);
-    }
+    const newStats = await recordCompletion();
+    setStats(newStats);
+    setHonestyTarget(null);
   };
 
   // Delete
@@ -126,6 +141,19 @@ export default function App() {
     return reminders.filter((r) => !r.isCompleted).length;
   }, [reminders]);
 
+  // Overdue count for Tavizsiz Kilit Modu (No extra time)
+  const overdueCount = useMemo(() => {
+    return reminders.filter((r) => {
+      if (r.isCompleted || !r.dueDate) return false;
+      const due = new Date(r.dueDate);
+      if (r.dueTime) {
+        const [h, m] = r.dueTime.split(':').map(Number);
+        if (!isNaN(h) && !isNaN(m)) due.setHours(h, m, 0, 0);
+      }
+      return due < new Date();
+    }).length;
+  }, [reminders]);
+
   // Filtered Reminders List
   const filteredReminders = useMemo(() => {
     const todayStr = new Date().toDateString();
@@ -143,7 +171,7 @@ export default function App() {
         // View Tabs
         if (currentFilter === 'today') {
           if (r.isCompleted) return false;
-          if (!r.dueDate) return true; // Undated items appear on today's view for actionability
+          if (!r.dueDate) return true;
           return new Date(r.dueDate).toDateString() === todayStr;
         }
         if (currentFilter === 'upcoming') {
@@ -160,7 +188,6 @@ export default function App() {
         return true;
       })
       .sort((a, b) => {
-        // Incomplete first, then by priority
         if (a.isCompleted !== b.isCompleted) {
           return a.isCompleted ? 1 : -1;
         }
@@ -182,6 +209,9 @@ export default function App() {
           totalActiveCount={activeCount}
           todayCount={todayCount}
         />
+
+        {/* Tavizsiz Mod & Overdue Lock Banner */}
+        <LockdownBanner overdueCount={overdueCount} />
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -250,6 +280,14 @@ export default function App() {
           reminder={snoozeTarget}
           onClose={() => setSnoozeTarget(null)}
           onApplySnooze={handleApplySnooze}
+        />
+
+        {/* Honesty Check Modal ("Kendine Karşı Dürüst Ol!") */}
+        <HonestyModal
+          visible={!!honestyTarget}
+          reminder={honestyTarget}
+          onConfirm={handleConfirmCompletion}
+          onCancel={() => setHonestyTarget(null)}
         />
       </View>
     </SafeAreaView>

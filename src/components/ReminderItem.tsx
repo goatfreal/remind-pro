@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
@@ -50,6 +50,19 @@ export const ReminderItem: React.FC<ReminderItemProps> = ({
   const priorityColor = getPriorityColor(reminder.priority);
   const categoryColor = getCategoryColor(reminder.category);
 
+  // Check if overdue
+  const isOverdue = useMemo(() => {
+    if (reminder.isCompleted || !reminder.dueDate) return false;
+    const due = new Date(reminder.dueDate);
+    if (reminder.dueTime) {
+      const [h, m] = reminder.dueTime.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        due.setHours(h, m, 0, 0);
+      }
+    }
+    return due < new Date();
+  }, [reminder]);
+
   // Format date preview
   let dateText = '';
   if (reminder.dueDate) {
@@ -70,15 +83,30 @@ export const ReminderItem: React.FC<ReminderItemProps> = ({
   }
 
   return (
-    <View style={[styles.card, reminder.isCompleted && styles.cardCompleted]}>
+    <View
+      style={[
+        styles.card,
+        reminder.isCompleted && styles.cardCompleted,
+        isOverdue && styles.cardOverdue,
+      ]}
+    >
       {/* Priority accent stripe */}
-      <View style={[styles.priorityStripe, { backgroundColor: priorityColor }]} />
+      <View
+        style={[
+          styles.priorityStripe,
+          { backgroundColor: isOverdue ? '#FF3B30' : priorityColor },
+        ]}
+      />
 
       <View style={styles.content}>
         {/* Checkbox & Title Row */}
         <View style={styles.topRow}>
           <TouchableOpacity
-            style={[styles.checkbox, reminder.isCompleted && styles.checkboxChecked]}
+            style={[
+              styles.checkbox,
+              reminder.isCompleted && styles.checkboxChecked,
+              isOverdue && !reminder.isCompleted && styles.checkboxOverdue,
+            ]}
             onPress={() => onToggle(reminder.id)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
@@ -112,11 +140,25 @@ export const ReminderItem: React.FC<ReminderItemProps> = ({
               <Text style={[styles.tagText, { color: categoryColor }]}>{reminder.category}</Text>
             </View>
 
+            {/* Overdue Badge */}
+            {isOverdue && (
+              <View style={styles.overdueBadge}>
+                <Ionicons name="lock-closed" size={11} color="#FF453A" />
+                <Text style={styles.overdueBadgeText}>EK SÜRE YOK</Text>
+              </View>
+            )}
+
             {/* Due Time */}
             {dateText ? (
-              <View style={styles.dateBadge}>
-                <Ionicons name="time-outline" size={12} color={COLORS.teal} />
-                <Text style={styles.dateBadgeText}>{dateText}</Text>
+              <View style={[styles.dateBadge, isOverdue && styles.dateBadgeOverdue]}>
+                <Ionicons
+                  name={isOverdue ? 'alert-circle' : 'time-outline'}
+                  size={12}
+                  color={isOverdue ? '#FF453A' : COLORS.teal}
+                />
+                <Text style={[styles.dateBadgeText, isOverdue && { color: '#FF453A' }]}>
+                  {dateText}
+                </Text>
               </View>
             ) : null}
 
@@ -131,7 +173,7 @@ export const ReminderItem: React.FC<ReminderItemProps> = ({
 
           {/* Quick Actions: Snooze & Delete */}
           <View style={styles.actionsContainer}>
-            {!reminder.isCompleted && (
+            {!reminder.isCompleted && !isOverdue && (
               <TouchableOpacity
                 style={styles.actionBtn}
                 onPress={() => onSnooze(reminder)}
@@ -169,6 +211,10 @@ const styles = StyleSheet.create({
     opacity: 0.55,
     backgroundColor: '#121216',
   },
+  cardOverdue: {
+    borderColor: '#FF3B3088',
+    backgroundColor: '#1C1012',
+  },
   priorityStripe: {
     width: 4,
     height: '100%',
@@ -195,6 +241,9 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: COLORS.low,
     borderColor: COLORS.low,
+  },
+  checkboxOverdue: {
+    borderColor: '#FF3B30',
   },
   textContainer: {
     flex: 1,
@@ -239,6 +288,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  overdueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#380E10',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#73181C',
+  },
+  overdueBadgeText: {
+    color: '#FF453A',
+    fontSize: 10,
+    fontWeight: '800',
+  },
   dateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -249,6 +314,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#1D4566',
+  },
+  dateBadgeOverdue: {
+    backgroundColor: '#301315',
+    borderColor: '#591E21',
   },
   dateBadgeText: {
     fontSize: 11,
